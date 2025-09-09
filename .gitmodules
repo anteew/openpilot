@@ -3,7 +3,7 @@
   url = ../../commaai/panda.git
 [submodule "opendbc"]
 	path = opendbc_repo
-	url = https://github.com/Anonymous-Lurker/opendbc.git
+	url = ../../Anonymous-Lurker/opendbc.git
 [submodule "msgq"]
   path = msgq_repo
   url = ../../commaai/msgq.git
@@ -16,4 +16,3 @@
 [submodule "tinygrad"]
   path = tinygrad_repo
   url = https://github.com/tinygrad/tinygrad.git
-#added anonymous-lurker opendbc.git
