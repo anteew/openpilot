@@ -1,4 +1,5 @@
 dans-comma-logs.txt
+old-openpilot-fork/
 venv/
 .venv/
 .ci_cache
