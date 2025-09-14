@@ -17,3 +17,5 @@
 	path = opendbc_repo
 	url = https://github.com/Anonymous-Lurker/opendbc.git
 	branch = master
+[submodule "opendbc_repo"]
+	branch = upstream-4b203ff
