@@ -276,14 +276,44 @@ class SelfdriveD:
     for i, pandaState in enumerate(self.sm['pandaStates']):
       # All pandas must match the list of safetyConfigs, and if outside this list, must be silent or noOutput
       if i < len(self.CP.safetyConfigs):
-        safety_mismatch = pandaState.safetyModel != self.CP.safetyConfigs[i].safetyModel or \
-                          pandaState.safetyParam != self.CP.safetyConfigs[i].safetyParam or \
-                          pandaState.alternativeExperience != self.CP.alternativeExperience
+        safety_model_mismatch = pandaState.safetyModel != self.CP.safetyConfigs[i].safetyModel
+        safety_param_mismatch = pandaState.safetyParam != self.CP.safetyConfigs[i].safetyParam
+        alt_exp_mismatch = pandaState.alternativeExperience != self.CP.alternativeExperience
+        safety_mismatch = safety_model_mismatch or safety_param_mismatch or alt_exp_mismatch
       else:
         safety_mismatch = pandaState.safetyModel not in IGNORED_SAFETY_MODES
+        safety_model_mismatch = safety_mismatch
+        safety_param_mismatch = False
+        alt_exp_mismatch = False
 
       # safety mismatch allows some time for pandad to set the safety mode and publish it back from panda
-      if (safety_mismatch and self.sm.frame*DT_CTRL > 10.) or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200:
+      safety_timeout = safety_mismatch and self.sm.frame*DT_CTRL > 10.
+      controls_mismatch_trigger = safety_timeout or pandaState.safetyRxChecksInvalid or self.mismatch_counter >= 200
+
+      if controls_mismatch_trigger:
+        # Log detailed information about what caused the controls mismatch
+        mismatch_reasons = []
+        if safety_timeout:
+          mismatch_reasons.append("safety_timeout")
+        if pandaState.safetyRxChecksInvalid:
+          mismatch_reasons.append("safetyRxChecksInvalid")
+        if self.mismatch_counter >= 200:
+          mismatch_reasons.append(f"mismatch_counter_exceeded({self.mismatch_counter})")
+
+        cloudlog.error(f"controlsMismatch triggered - panda{i}: reasons={mismatch_reasons}, "
+                      f"uptime={self.sm.frame*DT_CTRL:.1f}s, enabled={self.enabled}")
+
+        if i < len(self.CP.safetyConfigs):
+          cloudlog.error(f"controlsMismatch panda{i} safety details: "
+                        f"actual_model={pandaState.safetyModel}, expected_model={self.CP.safetyConfigs[i].safetyModel}, "
+                        f"actual_param={pandaState.safetyParam}, expected_param={self.CP.safetyConfigs[i].safetyParam}, "
+                        f"actual_altExp={pandaState.alternativeExperience}, expected_altExp={self.CP.alternativeExperience}, "
+                        f"controlsAllowed={pandaState.controlsAllowed}")
+        else:
+          cloudlog.error(f"controlsMismatch panda{i} (extra panda): "
+                        f"actual_model={pandaState.safetyModel}, ignored_modes={IGNORED_SAFETY_MODES}, "
+                        f"controlsAllowed={pandaState.controlsAllowed}")
+
         self.events.add(EventName.controlsMismatch)
 
       if log.PandaState.FaultType.relayMalfunction in pandaState.faults:
@@ -447,9 +477,13 @@ class SelfdriveD:
       self.mismatch_counter = 0
 
     # All pandas not in silent mode must have controlsAllowed when openpilot is enabled
-    if self.enabled and any(not ps.controlsAllowed for ps in self.sm['pandaStates']
-           if ps.safetyModel not in IGNORED_SAFETY_MODES):
+    pandas_without_controls = [i for i, ps in enumerate(self.sm['pandaStates'])
+                              if ps.safetyModel not in IGNORED_SAFETY_MODES and not ps.controlsAllowed]
+    if self.enabled and pandas_without_controls:
       self.mismatch_counter += 1
+      cloudlog.warning(f"mismatch_counter incremented to {self.mismatch_counter}: "
+                      f"openpilot enabled but panda(s) {pandas_without_controls} don't have controlsAllowed. "
+                      f"Panda states: {[(i, ps.safetyModel, ps.controlsAllowed) for i, ps in enumerate(self.sm['pandaStates'])]}")
 
     return CS
 
